@@ -1,6 +1,6 @@
 import React from "react";
 
-function Snake({ snake }) {
+function Snake({ snake, color = "#e7da3d" }) {
   return (
     <div>
       {snake.map((box, i) => (
@@ -8,7 +8,7 @@ function Snake({ snake }) {
           style={{
             width: "15px",
             height: "15px",
-            backgroundColor: "#e7da3d",
+            backgroundColor: color,
             margin: "5px",
             position: "absolute",
             left: `${box.x}%`,

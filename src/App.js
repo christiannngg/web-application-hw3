@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
+import EffectLabel from "./components/EffectLabel";
 import Food from "./components/Food";
+import PowerUp from "./components/PowerUp";
 import Snake from "./components/Snake";
 
 const randomFoodPosition = () => {
@@ -22,13 +24,53 @@ const initialSnake = {
   speed: 100,
 };
 
+const POWER_UP_CHANCE = 0.2; // chance a power-up appears after eating food
+const POWER_UP_LIFETIME = 8000; // ms before an uncollected power-up vanishes
+const EFFECT_DURATION = 5000; // ms the speed effect lasts
+
+const EFFECTS = {
+  boost: { speed: 50, color: "#ff8c1a", label: "SPEED BOOST" },
+  slow: { speed: 180, color: "#6aa6ff", label: "SLOW MOTION" },
+};
+
+const randomPowerUp = (snake, food) => {
+  let pos;
+  do {
+    pos = randomFoodPosition();
+  } while (
+    pos.x === 0 || // x = 0 is a wall
+    (pos.x === food.x && pos.y === food.y) ||
+    snake.some((s) => s.x === pos.x && s.y === pos.y)
+  );
+  return { ...pos, type: Math.random() < 0.5 ? "boost" : "slow" };
+};
+
 function App() {
   const [snake, setSnake] = useState(initialSnake.snake);
   const [lastDirection, setLastDirection] = useState(initialSnake.direction);
   const [foodPosition, setFoodPosition] = useState(randomFoodPosition);
   const [isStarted, setIsStarted] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [powerUp, setPowerUp] = useState(null);
+  const [effect, setEffect] = useState(null); // { type, endsAt }
   const playgroundRef = useRef();
+
+  // Uncollected power-ups disappear after a while.
+  useEffect(() => {
+    if (!powerUp) return;
+    const t = setTimeout(() => setPowerUp(null), POWER_UP_LIFETIME);
+    return () => clearTimeout(t);
+  }, [powerUp]);
+
+  // Active speed effect ends after EFFECT_DURATION.
+  useEffect(() => {
+    if (!effect) return;
+    const t = setTimeout(
+      () => setEffect(null),
+      Math.max(0, effect.endsAt - Date.now())
+    );
+    return () => clearTimeout(t);
+  }, [effect]);
 
   useEffect(() => {
     if (!isStarted) return;
@@ -42,7 +84,8 @@ function App() {
       setGameOver(true);
       return;
     }
-    const interval = setInterval(move, initialSnake.speed);
+    const speed = effect ? EFFECTS[effect.type].speed : initialSnake.speed;
+    const interval = setInterval(move, speed);
     return () => clearInterval(interval);
   });
 
@@ -71,8 +114,18 @@ function App() {
       x,
       y,
     });
+    if (powerUp && x === powerUp.x && y === powerUp.y) {
+      setEffect({ type: powerUp.type, endsAt: Date.now() + EFFECT_DURATION });
+      setPowerUp(null);
+    }
     if (x !== foodPosition.x || y !== foodPosition.y) tmpSnake.shift();
-    else setFoodPosition(randomFoodPosition());
+    else {
+      const newFood = randomFoodPosition();
+      setFoodPosition(newFood);
+      if (Math.random() < POWER_UP_CHANCE) {
+        setPowerUp(randomPowerUp(tmpSnake, newFood));
+      }
+    }
     setSnake(tmpSnake);
   };
 
@@ -108,6 +161,8 @@ function App() {
               setGameOver(false);
               setSnake(initialSnake.snake);
               setLastDirection(initialSnake.direction);
+              setPowerUp(null);
+              setEffect(null);
               playgroundRef.current.focus();
             }}
             type="submit"
@@ -116,10 +171,24 @@ function App() {
           </button>
         </>
       )}
-      <Snake snake={snake} lastDirection={lastDirection} />
+      {effect && !gameOver && (
+        <EffectLabel
+          label={EFFECTS[effect.type].label}
+          color={EFFECTS[effect.type].color}
+          endsAt={effect.endsAt}
+        />
+      )}
+      <Snake
+        snake={snake}
+        lastDirection={lastDirection}
+        color={effect ? EFFECTS[effect.type].color : undefined}
+      />
       {!gameOver && (
         <>
           <Food position={foodPosition} />
+          {powerUp && (
+            <PowerUp position={powerUp} color={EFFECTS[powerUp.type].color} />
+          )}
         </>
       )}
     </div>
