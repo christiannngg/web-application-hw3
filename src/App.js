@@ -4,6 +4,7 @@ import EffectLabel from "./components/EffectLabel";
 import Food from "./components/Food";
 import PowerUp from "./components/PowerUp";
 import Snake from "./components/Snake";
+import TimeLabel from "./components/TimeLabel";
 
 const randomFoodPosition = () => {
   const pos = { x: 0, y: 0 };
@@ -47,6 +48,10 @@ const POWER_UP_TYPES = [...Object.keys(EFFECTS), "shield"];
 const powerUpColor = (type) =>
   type === "shield" ? SHIELD_COLOR : EFFECTS[type].color;
 
+// Time Attack: start with TIME_ATTACK_START ms, each food adds TIME_ATTACK_BONUS ms.
+const TIME_ATTACK_START = 30000;
+const TIME_ATTACK_BONUS = 3000;
+
 // WASD keys -> internal direction names
 const KEY_TO_DIRECTION = {
   w: "ArrowUp",
@@ -86,6 +91,9 @@ function App() {
   const [powerUp, setPowerUp] = useState(null);
   const [effect, setEffect] = useState(null); // { type, endsAt }
   const [hasShield, setHasShield] = useState(false);
+  const [mode, setMode] = useState("classic"); // "classic" | "timeAttack"
+  const [deadline, setDeadline] = useState(null); // Time Attack end timestamp (ms)
+  const [timeUp, setTimeUp] = useState(false);
   const playgroundRef = useRef();
   const frozenUntil = useRef(0); // snake is paused until this timestamp
   const movedDirection = useRef(initialSnake.direction); // direction of the last actual move
@@ -107,8 +115,18 @@ function App() {
     return () => clearTimeout(t);
   }, [effect]);
 
+  // Time Attack: end the game when the clock runs out.
   useEffect(() => {
-    if (!isStarted) return;
+    if (!deadline || !isStarted || gameOver) return;
+    const t = setTimeout(() => {
+      setTimeUp(true);
+      setGameOver(true);
+    }, Math.max(0, deadline - Date.now()));
+    return () => clearTimeout(t);
+  }, [deadline, isStarted, gameOver]);
+
+  useEffect(() => {
+    if (!isStarted || gameOver) return;
 
     const head = snake[snake.length - 1];
     const hitSelf = snake
@@ -182,11 +200,40 @@ function App() {
     else {
       const newFood = randomFoodPosition();
       setFoodPosition(newFood);
+      if (mode === "timeAttack") setDeadline((d) => d + TIME_ATTACK_BONUS);
       if (Math.random() < POWER_UP_CHANCE) {
         setPowerUp(randomPowerUp(tmpSnake, newFood));
       }
     }
     setSnake(tmpSnake);
+  };
+
+  const resetGame = () => {
+    setGameOver(false);
+    setTimeUp(false);
+    setSnake(initialSnake.snake);
+    setLastDirection(initialSnake.direction);
+    movedDirection.current = initialSnake.direction;
+    setPowerUp(null);
+    setEffect(null);
+    setHasShield(false);
+    frozenUntil.current = 0;
+  };
+
+  const startGame = (selectedMode) => {
+    resetGame();
+    setMode(selectedMode);
+    setDeadline(
+      selectedMode === "timeAttack" ? Date.now() + TIME_ATTACK_START : null
+    );
+    setIsStarted(true);
+    playgroundRef.current.focus();
+  };
+
+  const backToMenu = () => {
+    resetGame();
+    setDeadline(null);
+    setIsStarted(false);
   };
 
   return (
@@ -206,38 +253,41 @@ function App() {
       {!isStarted && (
         <>
           <button
-            onClick={() => {
-              setIsStarted(true);
-              playgroundRef.current.focus();
-            }}
+            className="mode-btn"
+            onClick={() => startGame("classic")}
             type="submit"
           >
-            Start
+            Classic
+          </button>
+          <button
+            className="mode-btn"
+            onClick={() => startGame("timeAttack")}
+            type="submit"
+          >
+            Time Attack
           </button>
           <div className="arrow-msg text">Press W A S D to play!</div>
         </>
       )}
       {gameOver && (
         <>
-          <div className="game-over text">Game Over!</div>
+          <div className="game-over text">
+            {timeUp ? "Time's up!" : "Game Over!"}
+          </div>
           <button
-            onClick={() => {
-              setIsStarted(true);
-              setGameOver(false);
-              setSnake(initialSnake.snake);
-              setLastDirection(initialSnake.direction);
-              movedDirection.current = initialSnake.direction;
-              setPowerUp(null);
-              setEffect(null);
-              setHasShield(false);
-              frozenUntil.current = 0;
-              playgroundRef.current.focus();
-            }}
+            className="mode-btn"
+            onClick={() => startGame(mode)}
             type="submit"
           >
             Restart
           </button>
+          <button className="mode-btn" onClick={backToMenu} type="submit">
+            Menu
+          </button>
         </>
+      )}
+      {mode === "timeAttack" && isStarted && !gameOver && deadline && (
+        <TimeLabel deadline={deadline} />
       )}
       {effect && !gameOver && (
         <EffectLabel

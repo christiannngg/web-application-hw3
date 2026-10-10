@@ -46,3 +46,13 @@ button {
   bottom: 0px;
   color: #85ff03;
 }
+
+.mode-btn {
+  width: auto;
+  max-width: none;
+  padding: 0 20px;
+}
+
+button + button {
+  margin-top: 10px;
+}
