@@ -20,16 +20,15 @@ button {
   max-width: 150px;
   height: 50px;
   border: none;
-  background-color: #e73d9f;
+  background-color: #ffaa00;
   font-weight: 600;
   z-index: 4;
   cursor: pointer;
 }
 
 .text {
-  color: #eb2d2d;
+  color: #85ff03;
   z-index: 4;
-  opacity: 0.5;
 }
 
 .arrow-msg {
@@ -45,6 +44,5 @@ button {
   position: absolute;
   font-size: 2rem;
   bottom: 0px;
-  color: #eb2d2d;
-  opacity: 0.5;
+  color: #85ff03;
 }
