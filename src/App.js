@@ -4,7 +4,9 @@ import EffectLabel from "./components/EffectLabel";
 import Food from "./components/Food";
 import PowerUp from "./components/PowerUp";
 import Snake from "./components/Snake";
+import StatsPanel from "./components/StatsPanel";
 import TimeLabel from "./components/TimeLabel";
+import { ACHIEVEMENTS, defaultStats, loadStats, saveStats } from "./stats";
 
 const randomFoodPosition = () => {
   const pos = { x: 0, y: 0 };
@@ -94,6 +96,11 @@ function App() {
   const [mode, setMode] = useState("classic"); // "classic" | "timeAttack"
   const [deadline, setDeadline] = useState(null); // Time Attack end timestamp (ms)
   const [timeUp, setTimeUp] = useState(false);
+  const [stats, setStats] = useState(loadStats);
+  const [toast, setToast] = useState(null); // name of the achievement just unlocked
+  const [showStats, setShowStats] = useState(false);
+  const statsRef = useRef(stats); // always-current stats for use inside the game loop
+  const powerUpsThisRun = useRef(0);
   const playgroundRef = useRef();
   const frozenUntil = useRef(0); // snake is paused until this timestamp
   const movedDirection = useRef(initialSnake.direction); // direction of the last actual move
@@ -125,6 +132,24 @@ function App() {
     return () => clearTimeout(t);
   }, [deadline, isStarted, gameOver]);
 
+  // Hide the achievement popup after a few seconds.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // Save the best score for this mode when a game ends.
+  useEffect(() => {
+    if (!gameOver) return;
+    const score = snake.length - 3;
+    const cur = statsRef.current;
+    if (score > (cur.best[mode] || 0)) {
+      updateStats({ ...cur, best: { ...cur.best, [mode]: score } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameOver]);
+
   useEffect(() => {
     if (!isStarted || gameOver) return;
 
@@ -147,6 +172,26 @@ function App() {
     const interval = setInterval(move, speed);
     return () => clearInterval(interval);
   });
+
+  const updateStats = (next) => {
+    statsRef.current = next;
+    setStats(next);
+    saveStats(next);
+  };
+
+  const unlock = (id) => {
+    const cur = statsRef.current;
+    if (cur.unlocked[id]) return;
+    updateStats({ ...cur, unlocked: { ...cur.unlocked, [id]: true } });
+    setToast(ACHIEVEMENTS.find((a) => a.id === id).name);
+  };
+
+  const checkScoreAchievements = (score) => {
+    if (score >= 1) unlock("firstBite");
+    if (score >= 10) unlock("score10");
+    if (score >= 25) unlock("score25");
+    if (mode === "timeAttack" && score >= 15) unlock("timeAttackPro");
+  };
 
   const move = () => {
     if (Date.now() < frozenUntil.current) return; // paused after a shield block
@@ -180,6 +225,7 @@ function App() {
     if (hasShield && (hitWall || hitSelf)) {
       setHasShield(false);
       frozenUntil.current = Date.now() + SHIELD_PAUSE;
+      unlock("shieldSave");
       return;
     }
 
@@ -195,12 +241,15 @@ function App() {
         setEffect({ type: powerUp.type, endsAt: Date.now() + EFFECT_DURATION });
       }
       setPowerUp(null);
+      powerUpsThisRun.current += 1;
+      if (powerUpsThisRun.current >= 3) unlock("powerPlayer");
     }
     if (x !== foodPosition.x || y !== foodPosition.y) tmpSnake.shift();
     else {
       const newFood = randomFoodPosition();
       setFoodPosition(newFood);
       if (mode === "timeAttack") setDeadline((d) => d + TIME_ATTACK_BONUS);
+      checkScoreAchievements(tmpSnake.length - 3);
       if (Math.random() < POWER_UP_CHANCE) {
         setPowerUp(randomPowerUp(tmpSnake, newFood));
       }
@@ -218,6 +267,7 @@ function App() {
     setEffect(null);
     setHasShield(false);
     frozenUntil.current = 0;
+    powerUpsThisRun.current = 0;
   };
 
   const startGame = (selectedMode) => {
@@ -248,7 +298,45 @@ function App() {
       ref={playgroundRef}
       tabIndex={0}
     >
-      {isStarted && <div className="count"> score: {snake.length - 3}</div>}
+      {isStarted && (
+        <div className="count">
+          {" "}
+          score: {snake.length - 3} | best:{" "}
+          {Math.max(stats.best[mode] || 0, snake.length - 3)}
+        </div>
+      )}
+      {toast && (
+        <div
+          style={{
+            position: "absolute",
+            top: "40px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(0, 0, 0, 0.85)",
+            border: "1px solid #e7da3d",
+            borderRadius: "8px",
+            color: "#e7da3d",
+            padding: "6px 14px",
+            fontWeight: 600,
+            whiteSpace: "nowrap",
+            zIndex: 6,
+          }}
+        >
+          ★ Achievement unlocked: {toast}
+        </div>
+      )}
+      {showStats && (
+        <StatsPanel
+          stats={stats}
+          achievements={ACHIEVEMENTS}
+          onClose={() => setShowStats(false)}
+          onReset={() => {
+            if (window.confirm("Reset all stats and achievements?")) {
+              updateStats(defaultStats());
+            }
+          }}
+        />
+      )}
 
       {!isStarted && (
         <>
@@ -265,6 +353,13 @@ function App() {
             type="submit"
           >
             Time Attack
+          </button>
+          <button
+            className="mode-btn"
+            onClick={() => setShowStats(true)}
+            type="submit"
+          >
+            Stats
           </button>
           <div className="arrow-msg text">Press W A S D to play!</div>
         </>
