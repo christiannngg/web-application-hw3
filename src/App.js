@@ -24,7 +24,7 @@ const initialSnake = {
   speed: 100,
 };
 
-const POWER_UP_CHANCE = 0.2; // chance a power-up appears after eating food
+const POWER_UP_CHANCE = 1; // chance a power-up appears after eating food
 const POWER_UP_LIFETIME = 8000; // ms before an uncollected power-up vanishes
 const EFFECT_DURATION = 5000; // ms the speed effect lasts
 
@@ -38,6 +38,14 @@ const EFFECTS = {
     opacity: 0.45,
   },
 };
+
+// Shield: not timed, it stays until it blocks one wall/tail collision.
+const SHIELD_COLOR = "#2ee6a6";
+const SHIELD_PAUSE = 1000; // ms the snake freezes after the shield blocks a hit
+
+const POWER_UP_TYPES = [...Object.keys(EFFECTS), "shield"];
+const powerUpColor = (type) =>
+  type === "shield" ? SHIELD_COLOR : EFFECTS[type].color;
 
 // WASD keys -> internal direction names
 const KEY_TO_DIRECTION = {
@@ -63,8 +71,10 @@ const randomPowerUp = (snake, food) => {
     (pos.x === food.x && pos.y === food.y) ||
     snake.some((s) => s.x === pos.x && s.y === pos.y)
   );
-  const types = Object.keys(EFFECTS);
-  return { ...pos, type: types[Math.floor(Math.random() * types.length)] };
+  return {
+    ...pos,
+    type: POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)],
+  };
 };
 
 function App() {
@@ -75,7 +85,9 @@ function App() {
   const [gameOver, setGameOver] = useState(false);
   const [powerUp, setPowerUp] = useState(null);
   const [effect, setEffect] = useState(null); // { type, endsAt }
+  const [hasShield, setHasShield] = useState(false);
   const playgroundRef = useRef();
+  const frozenUntil = useRef(0); // snake is paused until this timestamp
   const movedDirection = useRef(initialSnake.direction); // direction of the last actual move
 
   // Uncollected power-ups disappear after a while.
@@ -119,6 +131,8 @@ function App() {
   });
 
   const move = () => {
+    if (Date.now() < frozenUntil.current) return; // paused after a shield block
+
     const tmpSnake = [...snake];
     let x = tmpSnake[tmpSnake.length - 1].x,
       y = tmpSnake[tmpSnake.length - 1].y;
@@ -139,13 +153,29 @@ function App() {
         break;
     }
 
+    // Shield absorbs one wall or own-tail collision: cancel the move and pause
+    // briefly so the player can steer away.
+    const hitWall = x <= 0 || x >= 100 || y < 0 || y >= 100;
+    const hitSelf =
+      effect?.type !== "ghost" &&
+      snake.slice(1).some((s) => s.x === x && s.y === y);
+    if (hasShield && (hitWall || hitSelf)) {
+      setHasShield(false);
+      frozenUntil.current = Date.now() + SHIELD_PAUSE;
+      return;
+    }
+
     movedDirection.current = lastDirection;
     tmpSnake.push({
       x,
       y,
     });
     if (powerUp && x === powerUp.x && y === powerUp.y) {
-      setEffect({ type: powerUp.type, endsAt: Date.now() + EFFECT_DURATION });
+      if (powerUp.type === "shield") {
+        setHasShield(true);
+      } else {
+        setEffect({ type: powerUp.type, endsAt: Date.now() + EFFECT_DURATION });
+      }
       setPowerUp(null);
     }
     if (x !== foodPosition.x || y !== foodPosition.y) tmpSnake.shift();
@@ -199,6 +229,8 @@ function App() {
               movedDirection.current = initialSnake.direction;
               setPowerUp(null);
               setEffect(null);
+              setHasShield(false);
+              frozenUntil.current = 0;
               playgroundRef.current.focus();
             }}
             type="submit"
@@ -214,8 +246,24 @@ function App() {
           endsAt={effect.endsAt}
         />
       )}
+      {hasShield && !gameOver && (
+        <div
+          style={{
+            position: "absolute",
+            top: "8px",
+            left: "12px",
+            color: SHIELD_COLOR,
+            fontSize: "1.2rem",
+            fontWeight: 600,
+            zIndex: 4,
+          }}
+        >
+          SHIELD
+        </div>
+      )}
       <Snake
         snake={snake}
+        shieldColor={hasShield ? SHIELD_COLOR : undefined}
         lastDirection={lastDirection}
         color={effect ? EFFECTS[effect.type].color : undefined}
         opacity={effect ? EFFECTS[effect.type].opacity : undefined}
@@ -224,7 +272,7 @@ function App() {
         <>
           <Food position={foodPosition} />
           {powerUp && (
-            <PowerUp position={powerUp} color={EFFECTS[powerUp.type].color} />
+            <PowerUp position={powerUp} color={powerUpColor(powerUp.type)} />
           )}
         </>
       )}

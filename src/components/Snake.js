@@ -1,6 +1,6 @@
 import React from "react";
 
-function Snake({ snake, color = "#e7da3d", opacity = 1 }) {
+function Snake({ snake, color = "#e7da3d", opacity = 1, shieldColor }) {
   return (
     <div>
       {snake.map((box, i) => (
@@ -15,6 +15,7 @@ function Snake({ snake, color = "#e7da3d", opacity = 1 }) {
             top: `${box.y}%`,
             zIndex: 1,
             opacity,
+            boxShadow: shieldColor ? `0 0 6px 3px ${shieldColor}` : "none",
           }}
         />
       ))}
